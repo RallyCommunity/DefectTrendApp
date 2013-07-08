@@ -1,8 +1,8 @@
 /*
 
-This app creates a column chart that shows the number of new defects that were created for each month
+This app creates a column chart that shows the number of new Defects that were created for each month
 over the last year and the number that were closed. It also creates a trend chart that shows the total number of
-open defects for each day.
+open Defects for each day.
 */
 
 
@@ -15,12 +15,24 @@ open defects for each day.
       return this.createTrendChart();
     },
     getColumnFilters: function() {
+      /*
+      Returns a filter that defines the type of the artifacts we're
+      looking for, and the state they need to be in, to be displayed
+      in the column chart.
+      */
+
       var stateFilters, typeFilter;
       typeFilter = Ext.create('Rally.data.lookback.QueryFilter', {
         property: '_TypeHierarchy',
         operator: '=',
         value: 'Defect'
       });
+      /*
+      stateFilters filters for snapshots that have either 'Idea' as their scheduleState
+      or have a ScheduleState greater than 'Accepted' and previous ScheduleStates
+      less than 'Accepted'
+      */
+
       stateFilters = Rally.data.lookback.QueryFilter.and([
         {
           property: '_PreviousValues.ScheduleState',
@@ -38,9 +50,34 @@ open defects for each day.
       });
       return typeFilter.and(stateFilters);
     },
-    createColumnChart: function() {
-      var allFilters;
-      Ext.define('CustomChartCalculator', {
+    createColumnCalculator: function() {
+      /*
+      This function defines the calculator that is used for the 
+      column chart. It takes the snapshots given to it (see the
+      getColumnFilters function) and returns series data for the
+      chart. 
+      
+      constructor() is necessary for the calculator to work
+      
+      prepareChartData() gets all the snapshots from the given store.
+      
+      runCalculation() is the function that does most of the work.
+        * It first groups all the snapshots by their ObjectID (See LoDash's _.groupBy function)
+        * For each list of snapshots by ObjectID, it takes the first (being the snapshot of the artifact when it was first created) and puts it into the
+          openedSnapshots array. takes the snapshot of when the artifact was closed (if it exists) and
+          puts it in the closedSnapshots array. 
+        * The getMonth function takes an ISO 8601 date, converts it into Ext's Date format, and then returns the
+          month as a string from 01 to 12.
+        * Then it passes the opened and closed snapshot arrays (grouped by month) into the xAxisDataTransformer function.
+        * Finally, it creates the chartData object which tells the chart what to graph, and returns it.
+      
+      xAxisDataTransformer() is given an array of key-value objects,
+      with each key a month, and each value a list of the snapshots that
+      fall under that month. It then returns an array of the number of snapshots
+      per month.
+      */
+
+      return Ext.define('My.ColumnCalculator', {
         extend: 'Rally.data.lookback.calculator.BaseCalculator',
         mixins: {
           observable: "Ext.util.Observable"
@@ -54,17 +91,8 @@ open defects for each day.
           snapshots = store.data.items;
           return this.runCalculation(snapshots);
         },
-        xAxisDataTransformer: function(snapshotsByMonth) {
-          var data;
-          data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-          _.each(snapshotsByMonth, function(snapshots, month) {
-            return data[month - 1] = snapshots.length;
-          });
-          return data;
-        },
         runCalculation: function(snapshots) {
           var chartData, closedByMonth, closedSnapshots, closedxdata, getMonth, groupedSnapshots, openedByMonth, openedSnapshots, openxdata;
-          console.log(snapshots);
           groupedSnapshots = _.groupBy(snapshots, function(snapshot) {
             return snapshot.data.ObjectID;
           });
@@ -96,18 +124,33 @@ open defects for each day.
             categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
           };
           return chartData;
+        },
+        xAxisDataTransformer: function(snapshotsByMonth) {
+          var data;
+          data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+          _.each(snapshotsByMonth, function(snapshots, month) {
+            return data[month - 1] = snapshots.length;
+          });
+          return data;
         }
       });
-      allFilters = this.getColumnFilters();
-      console.log(allFilters);
+    },
+    createColumnChart: function() {
+      /*
+      This function creates and displays the chart. The storeConfig is defined below. The filters for the config
+      are given by @getColumnFilters and the calculator is created in @createColumnCalculator. The chartConfig
+      is mostly aesthetic details.
+      */
+
+      this.createColumnCalculator();
       this.columnChart = Ext.create('Rally.ui.chart.Chart', {
         storeType: 'Rally.data.lookback.SnapshotStore',
         storeConfig: {
           hydrate: ["ScheduleState"],
           fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "ScheduleState", "Name"],
-          filters: allFilters
+          filters: this.getColumnFilters()
         },
-        calculatorType: 'CustomChartCalculator',
+        calculatorType: 'My.ColumnCalculator',
         calculatorConfig: {},
         chartConfig: {
           chart: {
@@ -128,6 +171,18 @@ open defects for each day.
       return this.add(this.columnChart);
     },
     createTrendChart: function() {
+      /*
+      This function both creates the calculator for the trend chart and the chart itself.
+      The chart displays, for every day, the number of open defects, as a zoomable area chart.
+      
+      The calculator My.TrendCalc uses the 'count' function to create the data for the chart to display.
+      It simply sums the number of opened snapshots per day. More about the functions that the calculator
+      supports can be found at: 
+        https://developer.help.rallydev.com/apps/2.0rc1/doc/#!/api/Rally.data.lookback.Lumenize.functions
+      
+      The rest of the function is the storeConfig and the chartConfig.
+      */
+
       Ext.define('My.TrendCalc', {
         extend: 'Rally.data.lookback.calculator.TimeSeriesCalculator',
         getMetrics: function() {
