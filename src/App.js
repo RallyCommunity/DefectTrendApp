@@ -15,12 +15,7 @@ open defects for each day.
       return this.createTrendChart();
     },
     getColumnFilters: function() {
-      var projectFilter, stateFilters, typeFilter;
-      projectFilter = Ext.create('Rally.data.lookback.QueryFilter', {
-        property: '_ProjectHierarchy',
-        operator: '=',
-        value: 11985641446
-      });
+      var stateFilters, typeFilter;
       typeFilter = Ext.create('Rally.data.lookback.QueryFilter', {
         property: '_TypeHierarchy',
         operator: '=',
@@ -41,7 +36,7 @@ open defects for each day.
         operator: '=',
         value: 'Idea'
       });
-      return projectFilter.and(typeFilter.and(stateFilters));
+      return typeFilter.and(stateFilters);
     },
     createColumnChart: function() {
       var allFilters;
@@ -152,8 +147,7 @@ open defects for each day.
             _TypeHierarchy: "Defect",
             ScheduleState: {
               $lt: "Accepted"
-            },
-            _ProjectHierarchy: 11985641446
+            }
           },
           hydrate: ["Priority"],
           fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "Priority"]

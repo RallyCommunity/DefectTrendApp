@@ -16,11 +16,11 @@ Ext.define('CustomApp',
     
 
     getColumnFilters: ->
-      projectFilter = Ext.create('Rally.data.lookback.QueryFilter',
-          property: '_ProjectHierarchy'
-          operator: '='
-          value: 11985641446
-        )
+      # projectFilter = Ext.create('Rally.data.lookback.QueryFilter',
+      #     property: '_ProjectHierarchy'
+      #     operator: '='
+      #     value: 11985641446
+      #   )
 
       typeFilter = Ext.create('Rally.data.lookback.QueryFilter', 
           property: '_TypeHierarchy'
@@ -40,8 +40,8 @@ Ext.define('CustomApp',
         ]
       ).or({property: 'ScheduleState', operator: '=', value: 'Idea'})
 
-      return projectFilter.and(typeFilter.and(stateFilters))
-
+      #return projectFilter.and(typeFilter.and(stateFilters))
+      return typeFilter.and(stateFilters)
 
     createColumnChart: ->
 
@@ -152,7 +152,7 @@ Ext.define('CustomApp',
           find: 
             _TypeHierarchy: "Defect"
             ScheduleState: {$lt:"Accepted"}
-            _ProjectHierarchy: 11985641446
+            #_ProjectHierarchy: 11985641446
 
           hydrate: ["Priority"]
           fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "Priority"]
