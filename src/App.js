@@ -21,7 +21,13 @@ open Defects for each day.
       in the column chart.
       */
 
-      var stateFilters, typeFilter;
+      var ProjectOid, projectFilter, stateFilters, typeFilter;
+      ProjectOid = this.getContext().getProject().ObjectID;
+      projectFilter = Ext.create('Rally.data.lookback.QueryFilter', {
+        property: '_ProjectHierarchy',
+        operator: '=',
+        value: ProjectOid
+      });
       typeFilter = Ext.create('Rally.data.lookback.QueryFilter', {
         property: '_TypeHierarchy',
         operator: '=',
@@ -48,7 +54,7 @@ open Defects for each day.
         operator: '=',
         value: 'Idea'
       });
-      return typeFilter.and(stateFilters);
+      return projectFilter.and(typeFilter.and(stateFilters));
     },
     createColumnCalculator: function() {
       /*
@@ -183,6 +189,8 @@ open Defects for each day.
       The rest of the function is the storeConfig and the chartConfig.
       */
 
+      var ProjectOid;
+      ProjectOid = this.getContext().getProject().ObjectID;
       Ext.define('My.TrendCalc', {
         extend: 'Rally.data.lookback.calculator.TimeSeriesCalculator',
         getMetrics: function() {
@@ -202,7 +210,8 @@ open Defects for each day.
             _TypeHierarchy: "Defect",
             ScheduleState: {
               $lt: "Accepted"
-            }
+            },
+            _ProjectHierarchy: ProjectOid
           },
           hydrate: ["Priority"],
           fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "Priority"]

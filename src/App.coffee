@@ -24,12 +24,14 @@ Ext.define('CustomApp',
       ###
 
 
+      ProjectOid = this.getContext().getProject().ObjectID;
 
-      # projectFilter = Ext.create('Rally.data.lookback.QueryFilter',
-      #     property: '_ProjectHierarchy'
-      #     operator: '='
-      #     value: 280784858
-      #   )
+
+      projectFilter = Ext.create('Rally.data.lookback.QueryFilter',
+          property: '_ProjectHierarchy'
+          operator: '='
+          value: ProjectOid
+        )
 
       typeFilter = Ext.create('Rally.data.lookback.QueryFilter', 
           property: '_TypeHierarchy'
@@ -55,8 +57,8 @@ Ext.define('CustomApp',
         ]
       ).or({property: 'ScheduleState', operator: '=', value: 'Idea'})
 
-      #return projectFilter.and(typeFilter.and(stateFilters))
-      return typeFilter.and(stateFilters)
+      return projectFilter.and(typeFilter.and(stateFilters))
+      #return typeFilter.and(stateFilters)
 
     createColumnCalculator: ->
 
@@ -155,7 +157,6 @@ Ext.define('CustomApp',
       are given by @getColumnFilters and the calculator is created in @createColumnCalculator. The chartConfig
       is mostly aesthetic details.
       ###
-
       @createColumnCalculator()
 
       @columnChart = Ext.create('Rally.ui.chart.Chart',
@@ -200,6 +201,8 @@ Ext.define('CustomApp',
 
       ###
 
+      ProjectOid = this.getContext().getProject().ObjectID;
+
       Ext.define('My.TrendCalc', 
         extend: 'Rally.data.lookback.calculator.TimeSeriesCalculator'
 
@@ -217,7 +220,7 @@ Ext.define('CustomApp',
           find: 
             _TypeHierarchy: "Defect"
             ScheduleState: {$lt:"Accepted"}
-            #_ProjectHierarchy: 280784858
+            _ProjectHierarchy: ProjectOid
 
           hydrate: ["Priority"]
           fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "Priority"]

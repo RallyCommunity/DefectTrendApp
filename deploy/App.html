@@ -9,71 +9,199 @@
 
     <script type="text/javascript">
         Rally.onReady(function () {
-(function() {
-  var allFilters, projectFilter, stateFilters, typeFilter;
+/*
 
+This app creates a column chart that shows the number of new Defects that were created for each month
+over the last year and the number that were closed. It also creates a trend chart that shows the total number of
+open Defects for each day.
+*/
+
+
+(function() {
   Ext.define('CustomApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
     launch: function() {
-      return this.createColumnGrid();
+      this.createColumnChart();
+      return this.createTrendChart();
     },
-    xAxisDataTransformer: function(snapshots) {
-      var data;
-      data = [].each(snapshots, function(snapshot) {
-        return data.push(Date.parse(snapshot.data._ValidFrom));
+    getColumnFilters: function() {
+      /*
+      Returns a filter that defines the type of the artifacts we're
+      looking for, and the state they need to be in, to be displayed
+      in the column chart.
+      */
+
+      var ProjectOid, projectFilter, stateFilters, typeFilter;
+      ProjectOid = this.getContext().getProject().ObjectID;
+      projectFilter = Ext.create('Rally.data.lookback.QueryFilter', {
+        property: '_ProjectHierarchy',
+        operator: '=',
+        value: ProjectOid
       });
-      return data;
-    },
-    createColumnGrid: function() {}
-  }, typeFilter = Ext.create('Rally.data.lookback.QueryFilter', {
-    property: '_TypeHierarchy',
-    operator: '=',
-    value: 'HierarchicalRequirement'
-  }), projectFilter = Ext.create('Rally.data.lookback.QueryFilter', {
-    property: '_ProjectHierarchy',
-    operator: '=',
-    value: 11985641446
-  }), stateFilters = Rally.data.lookback.QueryFilter.and([
-    {
-      property: '_PreviousValues.ScheduleState',
-      operator: '<',
-      value: 'Accepted'
-    }, {
-      property: 'ScheduleState',
-      operator: '>=',
-      value: 'Accepted'
-    }
-  ]).or({
-    property: 'ScheduleState',
-    operator: '=',
-    value: 'Idea'
-  }), allFilters = projectFilter.and(typeFilter.and(stateFilters)), this.columnChart = Ext.create('Rally.ui.chart.Chart', {
-    storeType: 'Rally.data.lookback.SnapshotStore',
-    storeConfig: {
-      hydrate: ["ScheduleState"],
-      fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "ScheduleState"],
-      filters: allFilters
-    },
-    calculatorType: 'CustomChartCalculator',
-    calculatorConfig: {},
-    chartConfig: {
-      chart: {
-        zoomType: 'x',
-        type: 'column'
-      },
-      title: {
-        text: 'Changed Defects over Time'
-      },
-      xAxis: {},
-      yAxis: {
-        title: {
-          text: 'Number of Changed Defects'
+      typeFilter = Ext.create('Rally.data.lookback.QueryFilter', {
+        property: '_TypeHierarchy',
+        operator: '=',
+        value: 'Defect'
+      });
+      /*
+      stateFilters filters for snapshots that have either 'Idea' as their scheduleState
+      or have a ScheduleState greater than 'Accepted' and previous ScheduleStates
+      less than 'Accepted'
+      */
+
+      stateFilters = Rally.data.lookback.QueryFilter.and([
+        {
+          property: '_PreviousValues.ScheduleState',
+          operator: '<',
+          value: 'Accepted'
+        }, {
+          property: 'ScheduleState',
+          operator: '>=',
+          value: 'Accepted'
         }
-      }
-    }
-  }), this.add(this.columnChart), {
-    createTrendGrid: function() {
+      ]).or({
+        property: 'ScheduleState',
+        operator: '=',
+        value: 'Idea'
+      });
+      return projectFilter.and(typeFilter.and(stateFilters));
+    },
+    createColumnCalculator: function() {
+      /*
+      This function defines the calculator that is used for the 
+      column chart. It takes the snapshots given to it (see the
+      getColumnFilters function) and returns series data for the
+      chart. 
+      
+      constructor() is necessary for the calculator to work
+      
+      prepareChartData() gets all the snapshots from the given store.
+      
+      runCalculation() is the function that does most of the work.
+        * It first groups all the snapshots by their ObjectID (See LoDash's _.groupBy function)
+        * For each list of snapshots by ObjectID, it takes the first (being the snapshot of the artifact when it was first created) and puts it into the
+          openedSnapshots array. takes the snapshot of when the artifact was closed (if it exists) and
+          puts it in the closedSnapshots array. 
+        * The getMonth function takes an ISO 8601 date, converts it into Ext's Date format, and then returns the
+          month as a string from 01 to 12.
+        * Then it passes the opened and closed snapshot arrays (grouped by month) into the xAxisDataTransformer function.
+        * Finally, it creates the chartData object which tells the chart what to graph, and returns it.
+      
+      xAxisDataTransformer() is given an array of key-value objects,
+      with each key a month, and each value a list of the snapshots that
+      fall under that month. It then returns an array of the number of snapshots
+      per month.
+      */
+
+      return Ext.define('My.ColumnCalculator', {
+        extend: 'Rally.data.lookback.calculator.BaseCalculator',
+        mixins: {
+          observable: "Ext.util.Observable"
+        },
+        constructor: function() {
+          this.mixins.observable.constructor.call(this);
+          this.callParent(arguments);
+        },
+        prepareChartData: function(store) {
+          var snapshots;
+          snapshots = store.data.items;
+          return this.runCalculation(snapshots);
+        },
+        runCalculation: function(snapshots) {
+          var chartData, closedByMonth, closedSnapshots, closedxdata, getMonth, groupedSnapshots, openedByMonth, openedSnapshots, openxdata;
+          groupedSnapshots = _.groupBy(snapshots, function(snapshot) {
+            return snapshot.data.ObjectID;
+          });
+          openedSnapshots = [];
+          closedSnapshots = [];
+          _.each(groupedSnapshots, function(snapshots, oid) {
+            openedSnapshots.push(snapshots[0]);
+            if (snapshots[snapshots.length - 1].data.State !== "Submitted" && snapshots.length !== 1) {
+              return closedSnapshots.push(snapshots[snapshots.length - 1]);
+            }
+          });
+          getMonth = function(snapshot) {
+            return parseInt(Ext.Date.format(Ext.Date.parse(snapshot.data._ValidFrom, "c"), "m"));
+          };
+          openedByMonth = _.groupBy(openedSnapshots, getMonth);
+          closedByMonth = _.groupBy(closedSnapshots, getMonth);
+          openxdata = this.xAxisDataTransformer(openedByMonth);
+          closedxdata = this.xAxisDataTransformer(closedByMonth);
+          chartData = {
+            series: [
+              {
+                name: 'New Defects',
+                data: openxdata
+              }, {
+                name: 'Closed Defects',
+                data: closedxdata
+              }
+            ],
+            categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+          };
+          return chartData;
+        },
+        xAxisDataTransformer: function(snapshotsByMonth) {
+          var data;
+          data = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+          _.each(snapshotsByMonth, function(snapshots, month) {
+            return data[month - 1] = snapshots.length;
+          });
+          return data;
+        }
+      });
+    },
+    createColumnChart: function() {
+      /*
+      This function creates and displays the chart. The storeConfig is defined below. The filters for the config
+      are given by @getColumnFilters and the calculator is created in @createColumnCalculator. The chartConfig
+      is mostly aesthetic details.
+      */
+
+      this.createColumnCalculator();
+      this.columnChart = Ext.create('Rally.ui.chart.Chart', {
+        storeType: 'Rally.data.lookback.SnapshotStore',
+        storeConfig: {
+          hydrate: ["ScheduleState"],
+          fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "ScheduleState", "Name"],
+          filters: this.getColumnFilters()
+        },
+        calculatorType: 'My.ColumnCalculator',
+        calculatorConfig: {},
+        chartConfig: {
+          chart: {
+            zoomType: 'x',
+            type: 'column'
+          },
+          title: {
+            text: 'Changed Defects over Time'
+          },
+          xAxis: {},
+          yAxis: {
+            title: {
+              text: 'Number of Changed Defects'
+            }
+          }
+        }
+      });
+      return this.add(this.columnChart);
+    },
+    createTrendChart: function() {
+      /*
+      This function both creates the calculator for the trend chart and the chart itself.
+      The chart displays, for every day, the number of open defects, as a zoomable area chart.
+      
+      The calculator My.TrendCalc uses the 'count' function to create the data for the chart to display.
+      It simply sums the number of opened snapshots per day. More about the functions that the calculator
+      supports can be found at: 
+        https://developer.help.rallydev.com/apps/2.0rc1/doc/#!/api/Rally.data.lookback.Lumenize.functions
+      
+      The rest of the function is the storeConfig and the chartConfig.
+      */
+
+      var ProjectOid;
+      ProjectOid = this.getContext().getProject().ObjectID;
       Ext.define('My.TrendCalc', {
         extend: 'Rally.data.lookback.calculator.TimeSeriesCalculator',
         getMetrics: function() {
@@ -91,9 +219,10 @@
         storeConfig: {
           find: {
             _TypeHierarchy: "Defect",
-            State: {
-              $in: ["Open", "Submitted"]
-            }
+            ScheduleState: {
+              $lt: "Accepted"
+            },
+            _ProjectHierarchy: ProjectOid
           },
           hydrate: ["Priority"],
           fetch: ["_ValidFrom", "_ValidTo", "ObjectID", "Priority"]
@@ -108,7 +237,10 @@
           title: {
             text: 'Defects over Time'
           },
-          xAxis: {},
+          xAxis: {
+            type: 'datetime',
+            minTickInterval: 3
+          },
           yAxis: {
             title: {
               text: 'Number of Defects'
@@ -117,117 +249,6 @@
         }
       });
       return this.add(this.myTrendChart);
-    }
-  });
-
-}).call(this);
-
-(function() {
-  var Ext;
-
-  Ext = window.Ext4 || window.Ext;
-
-  Ext.define('CustomChart', {
-    extend: 'Rally.ui.chart.Chart',
-    _haveDataToRender: function() {
-      return true;
-    },
-    _getChart: function() {
-      return this.down('highchart');
-    },
-    _getChartData: function() {
-      return this.calculator.prepareChartData(this.loadedStores);
-    },
-    getTotalPoints: function() {
-      return this.chartData.series[0].data.length;
-    },
-    _clearData: function() {
-      var chart;
-      chart = this._getChart().chart;
-      while (chart.series.length) {
-        chart.series[0].remove(false);
-      }
-    },
-    updateData: function() {
-      var chart, series, _i, _len, _ref;
-      this.chartData = this._getChartData();
-      this._clearData();
-      chart = this._getChart().chart;
-      _ref = this.chartData.series;
-      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-        series = _ref[_i];
-        chart.addSeries(series, false);
-      }
-      chart.redraw();
-      return this.fireEvent('chartRendered', this);
-    },
-    _renderChart: function() {
-      Highcharts.setOptions(Ext.global["Highcharts" + this.themename + "Theme"]);
-      return this.down('#chart').add({
-        margin: 20,
-        xtype: 'highchart',
-        chartConfig: this.getChartConfig(),
-        series: this.chartData.series
-      });
-    }
-  });
-
-}).call(this);
-
-(function() {
-  var Ext;
-
-  Ext = window.Ext4 || window.Ext;
-
-  Ext.define('CustomChartCalculator', {
-    extend: 'Rally.data.lookback.calculator.BaseCalculator',
-    mixins: {
-      observable: "Ext.util.Observable"
-    },
-    constructor: function() {
-      this.mixins.observable.constructor.call(this);
-      this.callParent(arguments);
-    },
-    prepareChartData: function(store) {
-      var snapshots;
-      snapshots = store.data.items;
-      return this.runCalculation(snapshots);
-    },
-    transformXdata: function(snapshotsByOid) {
-      throw new Error('This method must be overridden');
-    },
-    transformYdata: function(snapshotsByOid) {
-      throw new Error('This method must be overridden');
-    },
-    runCalculation: function(snapshots) {
-      var chartData, closedSnapshots, closedxdata, firstDate, groupedSnapshots, lastDate, openedSnapshots, openxdata;
-      firstDate = Date.UTC(snapshots[0].data._validFrom);
-      lastDate = Date.UTC(snapshots[snapshots.lenth - 1].data._validTo);
-      groupedSnapshots = _.groupBy(snapshots, function(snapshot) {
-        return snapshot.ObjectID;
-      });
-      openedSnapshots = [];
-      closedSnapshots = [];
-      _.each(groupedSnapshots, function(snapshots, oid) {
-        openedSnapshots.push(snapshots[0]);
-        if (snapshots[snapshots.length - 1].data.ScheduleState !== "Idea") {
-          return closedSnapshots.push(snapshots[snapshots.length - 1]);
-        }
-      });
-      openxdata = this.transformXdata(openedSnapshots);
-      closedxdata = this.transformXdata(closedSnapshots);
-      chartData = {
-        series: [
-          {
-            name: 'Open Defects',
-            data: openxdata
-          }, {
-            name: 'Closed Defects',
-            data: closedxdata
-          }
-        ]
-      };
-      return chartData;
     }
   });
 
